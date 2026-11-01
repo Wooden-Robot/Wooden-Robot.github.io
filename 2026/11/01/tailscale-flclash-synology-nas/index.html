@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.4.2">
+  <link rel="icon" type="image/png" sizes="32x32" href="/uploads/8bit.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/uploads/8bit.png">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"woodenrobot.me","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":true},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":"gitalk","storage":true,"lazyload":true,"nav":{"disqus":{"text":"Disqus","order":-2},"gitalk":{"text":"Gitalk","order":-1}},"activeClass":"gitalk"},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":5,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="使用群晖 Tailscale 子网路由与 FlClash 内置 Tailscale 出站，实现通过 HTTPS 域名安全访问家庭 NAS，并排查 Fake-IP、SERVFAIL 和内核 Hosts 问题。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="不用公网 IP，也能通过域名访问群晖 NAS：Tailscale + FlClash 实战教程">
+<meta property="og:url" content="https://woodenrobot.me/2026/11/01/tailscale-flclash-synology-nas/index.html">
+<meta property="og:site_name" content="WoodenRobot&#39;s Blog">
+<meta property="og:description" content="使用群晖 Tailscale 子网路由与 FlClash 内置 Tailscale 出站，实现通过 HTTPS 域名安全访问家庭 NAS，并排查 Fake-IP、SERVFAIL 和内核 Hosts 问题。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-11-01T03:50:00.000Z">
+<meta property="article:modified_time" content="2026-11-01T03:57:11.586Z">
+<meta property="article:author" content="WoodenRobot">
+<meta property="article:tag" content="内网穿透">
+<meta property="article:tag" content="群晖">
+<meta property="article:tag" content="Tailscale">
+<meta property="article:tag" content="FlClash">
+<meta property="article:tag" content="Mihomo">
+<meta property="article:tag" content="NAS">
+<meta property="article:tag" content="DNS">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="https://woodenrobot.me/2026/11/01/tailscale-flclash-synology-nas/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>不用公网 IP，也能通过域名访问群晖 NAS：Tailscale + FlClash 实战教程 | WoodenRobot's Blog</title>
+  
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-85052923-1"></script>
+    <script>
+      if (CONFIG.hostname === location.hostname) {
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-85052923-1');
+      }
+    </script>
+
+
+  <script>
+    var _hmt = _hmt || [];
+    (function() {
+      var hm = document.createElement("script");
+      hm.src = "https://hm.baidu.com/hm.js?f6877c80d4354214ca22c266ee5fbdcf";
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(hm, s);
+    })();
+  </script>
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+<link rel="alternate" href="/atom.xml" title="WoodenRobot's Blog" type="application/atom+xml">
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">WoodenRobot's Blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-rss">
+
+    <a href="/atom.xml" rel="section"><i class="fa fa-rss fa-fw"></i>RSS</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+  <a href="https://github.com/Wooden-Robot" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://woodenrobot.me/2026/11/01/tailscale-flclash-synology-nas/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/uploads/8bit.png">
+      <meta itemprop="name" content="WoodenRobot">
+      <meta itemprop="description" content="Life is short, should be fun!">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="WoodenRobot's Blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          不用公网 IP，也能通过域名访问群晖 NAS：Tailscale + FlClash 实战教程
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-11-01 11:50:00" itemprop="dateCreated datePublished" datetime="2026-11-01T11:50:00+08:00">2026-11-01</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E6%8A%80%E6%9C%AF%E6%95%99%E7%A8%8B/" itemprop="url" rel="index"><span itemprop="name">技术教程</span></a>
+                </span>
+                  ，
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E6%8A%80%E6%9C%AF%E6%95%99%E7%A8%8B/%E7%BD%91%E7%BB%9C%E4%B8%8E-NAS/" itemprop="url" rel="index"><span itemprop="name">网络与 NAS</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Disqus：</span>
+    
+    <a title="disqus" href="/2026/11/01/tailscale-flclash-synology-nas/#disqus_thread" itemprop="discussionUrl">
+      <span class="post-comments-count disqus-comment-count" data-disqus-identifier="2026/11/01/tailscale-flclash-synology-nas/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  <br>
+            <span class="post-meta-item" title="本文字数">
+              <span class="post-meta-item-icon">
+                <i class="far fa-file-word"></i>
+              </span>
+                <span class="post-meta-item-text">本文字数：</span>
+              <span>6k</span>
+            </span>
+            <span class="post-meta-item" title="阅读时长">
+              <span class="post-meta-item-icon">
+                <i class="far fa-clock"></i>
+              </span>
+                <span class="post-meta-item-text">阅读时长 &asymp;</span>
+              <span>5 分钟</span>
+            </span>
+            <div class="post-description">使用群晖 Tailscale 子网路由与 FlClash 内置 Tailscale 出站，实现通过 HTTPS 域名安全访问家庭 NAS，并排查 Fake-IP、SERVFAIL 和内核 Hosts 问题。</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>家里的群晖 NAS 上运行着 DSM、Docker、影音和其他自建服务。在局域网中访问很方便，但外出后如何继续用<strong>同一个 HTTPS 域名</strong>访问这些服务，而且不暴露公网端口？</p>
+<p>我最终采用的方案是：<strong>群晖通过 Tailscale 发布家庭子网路由；FlClash 使用 Mihomo 内置的 <code>type: tailscale</code> 节点，按规则把家庭内网请求送进 Tailscale。</strong> 实际部署中还踩到了「IP 能访问、域名却报 <code>SERVFAIL</code>」的坑，最后通过 Mihomo 内核 Hosts 解决。</p>
+<span id="more"></span>
+
+<h2 id="一、方案与网络拓扑"><a href="#一、方案与网络拓扑" class="headerlink" title="一、方案与网络拓扑"></a>一、方案与网络拓扑</h2><p>本文的示例环境如下（均为演示地址，按自己的环境替换）：</p>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>示例值</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>家庭局域网网段</td>
+<td><code>192.168.123.0/24</code></td>
+</tr>
+<tr>
+<td>群晖 NAS 局域网 IP</td>
+<td><code>192.168.123.163</code></td>
+</tr>
+<tr>
+<td>NAS 访问域名</td>
+<td><code>nas.example.com</code></td>
+</tr>
+<tr>
+<td>群晖 HTTPS 反向代理端口</td>
+<td><code>443</code></td>
+</tr>
+<tr>
+<td>FlClash 家庭网络策略组</td>
+<td><code>Home</code></td>
+</tr>
+</tbody></table>
+<p>最终实现的链路：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">Android / Mac</span><br><span class="line">    |</span><br><span class="line">  FlClash</span><br><span class="line">    |</span><br><span class="line"> Mihomo 分流</span><br><span class="line">    |                       普通互联网请求</span><br><span class="line">    +-- nas.example.com --&gt; Home / TS-HOME</span><br><span class="line">    |                            |</span><br><span class="line">    |                      Tailscale 网络</span><br><span class="line">    |                            |</span><br><span class="line">    |                     群晖子网路由器</span><br><span class="line">    |                            |</span><br><span class="line">    |                   192.168.123.0/24</span><br><span class="line">    |                            |</span><br><span class="line">    |                   192.168.123.163:443</span><br><span class="line">    |                            |</span><br><span class="line">    |                   HTTPS 反向代理 / DSM</span><br><span class="line">    |</span><br><span class="line">    +-- 其他流量 ----------&gt; 原有代理或 DIRECT</span><br></pre></td></tr></table></figure>
+
+<p>与普通的「通过公网 IP + DDNS + 端口映射」方案相比，这套方案不需要把 NAS 的业务端口暴露在公网，也不要求家里有可入站的公网 IP。</p>
+<p><strong>两者分工很明确：Tailscale 负责组网和访问家庭子网，Mihomo 负责流量分流。</strong></p>
+<h2 id="二、群晖配置-Tailscale-子网路由"><a href="#二、群晖配置-Tailscale-子网路由" class="headerlink" title="二、群晖配置 Tailscale 子网路由"></a>二、群晖配置 Tailscale 子网路由</h2><h3 id="1-安装-Tailscale"><a href="#1-安装-Tailscale" class="headerlink" title="1. 安装 Tailscale"></a>1. 安装 Tailscale</h3><p>从 <a target="_blank" rel="noopener" href="https://pkgs.tailscale.com/stable/#spk">Tailscale 官方 Synology SPK 下载页</a> 下载适合群晖 CPU 架构与 DSM 版本的安装包。</p>
+<p>进入 DSM「套件中心 → 手动安装」，安装后登录自己的 Tailnet。</p>
+<h3 id="2-启用-SSH-并发布子网"><a href="#2-启用-SSH-并发布子网" class="headerlink" title="2. 启用 SSH 并发布子网"></a>2. 启用 SSH 并发布子网</h3><p>在 DSM「控制面板 → 终端机和 SNMP」中启用 SSH，在电脑终端连接群晖：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ssh 管理员用户名@192.168.123.163</span><br></pre></td></tr></table></figure>
+
+<p>发布家庭局域网网段：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">sudo</span> tailscale <span class="built_in">set</span> --advertise-routes=192.168.123.0/24</span><br></pre></td></tr></table></figure>
+
+<p>这表示其他授权的 Tailscale 设备可以通过群晖访问 <code>192.168.123.0/24</code> 中的设备，包括没有单独安装 Tailscale 的路由器、摄像头以及 Docker 服务。</p>
+<h3 id="3-在后台批准路由"><a href="#3-在后台批准路由" class="headerlink" title="3. 在后台批准路由"></a>3. 在后台批准路由</h3><p>打开 <a target="_blank" rel="noopener" href="https://login.tailscale.com/admin/machines">Tailscale Machines</a>，找到群晖，进入子网路由设置并批准：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">192.168.123.0/24</span><br></pre></td></tr></table></figure>
+
+<p>还需要确认 Tailnet 的 ACL/Grants、群晖防火墙和目标设备防火墙允许相应流量。</p>
+<blockquote>
+<p><strong>提示：</strong> 在 DSM 7 环境下，某些 Ping 测试不一定能代表实际 TCP/UDP 可达性。优先使用 Web、SSH 等实际服务测试。</p>
+</blockquote>
+<h2 id="三、配置群晖-HTTPS-反向代理"><a href="#三、配置群晖-HTTPS-反向代理" class="headerlink" title="三、配置群晖 HTTPS 反向代理"></a>三、配置群晖 HTTPS 反向代理</h2><p>理想的访问方式是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">https://nas.example.com</span><br></pre></td></tr></table></figure>
+
+<p>而不是记住：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">https://192.168.123.163:5001</span><br></pre></td></tr></table></figure>
+
+<p>进入 DSM「控制面板 → 登录门户 → 高级 → 反向代理」，添加一条规则。以代理到 DSM 登录页为例：</p>
+<table>
+<thead>
+<tr>
+<th>配置项</th>
+<th>示例</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>来源协议</td>
+<td>HTTPS</td>
+</tr>
+<tr>
+<td>来源主机名</td>
+<td><code>nas.example.com</code></td>
+</tr>
+<tr>
+<td>来源端口</td>
+<td><code>443</code></td>
+</tr>
+<tr>
+<td>目标协议</td>
+<td>HTTPS</td>
+</tr>
+<tr>
+<td>目标主机名</td>
+<td><code>127.0.0.1</code></td>
+</tr>
+<tr>
+<td>目标端口</td>
+<td><code>5001</code></td>
+</tr>
+</tbody></table>
+<p>不同服务需换成其对应的后端地址及端口。如果使用了 HTTPS 后端自签证书，还要考虑反向代理的证书验证设置。</p>
+<p>为 <code>nas.example.com</code> 绑定有效的 TLS 证书；不开放公网 80/443 的情况下，可使用 DNS-01 验证签发或续期证书。</p>
+<p><strong>为什么 IP 直连 443 可能不工作？</strong> 因为浏览器使用域名访问时，会在 TLS 握手中提供 SNI，并在 HTTP 中发送 Host；反向代理可能依靠这些信息选择服务。因此，<code>https://192.168.123.163</code> 和 <code>https://nas.example.com</code> 不一定等价。</p>
+<h2 id="四、FlClash-配置内置-Tailscale-出站"><a href="#四、FlClash-配置内置-Tailscale-出站" class="headerlink" title="四、FlClash 配置内置 Tailscale 出站"></a>四、FlClash 配置内置 Tailscale 出站</h2><h3 id="1-生成-Auth-Key"><a href="#1-生成-Auth-Key" class="headerlink" title="1. 生成 Auth Key"></a>1. 生成 Auth Key</h3><p>登录 <a target="_blank" rel="noopener" href="https://login.tailscale.com/admin/settings/keys">Tailscale Keys</a>，生成用于首次注册的 Auth Key。</p>
+<p>单台设备通常选择一次性 Key；要注册多台独立设备时，可以按需使用 <strong>Reusable</strong>，但必须妥善保管，避免泄露。<strong>Reusable Auth Key 并不意味着多台设备可以共用同一份已注册节点状态。</strong></p>
+<h3 id="2-添加-type-tailscale-节点"><a href="#2-添加-type-tailscale-节点" class="headerlink" title="2. 添加 type: tailscale 节点"></a>2. 添加 <code>type: tailscale</code> 节点</h3><p>在已有 Mihomo YAML 的 <code>proxies</code> 列表内<strong>追加节点</strong>（不要覆盖原有 <code>proxies</code>）：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="bullet">-</span> <span class="attr">name:</span> <span class="string">TS-HOME</span></span><br><span class="line">  <span class="attr">type:</span> <span class="string">tailscale</span></span><br><span class="line">  <span class="attr">hostname:</span> <span class="string">flclash-phone</span></span><br><span class="line">  <span class="attr">auth-key:</span> <span class="string">&quot;tskey-auth-请替换成自己的密钥&quot;</span></span><br><span class="line">  <span class="attr">state-dir:</span> <span class="string">./tailscale-flclash-phone</span></span><br><span class="line">  <span class="attr">accept-routes:</span> <span class="literal">true</span></span><br><span class="line">  <span class="attr">udp:</span> <span class="literal">true</span></span><br></pre></td></tr></table></figure>
+
+<p>核心参数：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>type: tailscale</code></td>
+<td>Mihomo 内置 Tailscale 出站</td>
+</tr>
+<tr>
+<td><code>hostname</code></td>
+<td>在 Tailnet 中显示的设备名</td>
+</tr>
+<tr>
+<td><code>auth-key</code></td>
+<td>首次注册使用的密钥</td>
+</tr>
+<tr>
+<td><code>state-dir</code></td>
+<td>节点身份及状态目录</td>
+</tr>
+<tr>
+<td><code>accept-routes: true</code></td>
+<td>接受群晖发布的家庭子网路由</td>
+</tr>
+<tr>
+<td><code>udp: true</code></td>
+<td>启用 UDP 支持</td>
+</tr>
+</tbody></table>
+<p>特别注意：Mac 和 Android 使用不同的状态目录和节点名称，例如 <code>flclash-mac</code>、<code>flclash-phone</code>。<strong>不要跨设备复制已注册的 Tailscale 状态数据</strong>，否则可能出现 <code>Duplicate node key</code>。</p>
+<h3 id="3-添加-Home-策略组"><a href="#3-添加-Home-策略组" class="headerlink" title="3. 添加 Home 策略组"></a>3. 添加 Home 策略组</h3><p>在已有的 <code>proxy-groups</code> 列表中追加：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="bullet">-</span> <span class="attr">name:</span> <span class="string">Home</span></span><br><span class="line">  <span class="attr">type:</span> <span class="string">select</span></span><br><span class="line">  <span class="attr">proxies:</span></span><br><span class="line">    <span class="bullet">-</span> <span class="string">TS-HOME</span></span><br><span class="line">    <span class="bullet">-</span> <span class="string">DIRECT</span></span><br></pre></td></tr></table></figure>
+
+<p>在 FlClash 中，将 <code>Home</code> 选择为 <code>TS-HOME</code>。</p>
+<h3 id="4-添加家庭域名与网段规则"><a href="#4-添加家庭域名与网段规则" class="headerlink" title="4. 添加家庭域名与网段规则"></a>4. 添加家庭域名与网段规则</h3><p>将下面的条目插入已有 <code>rules</code> 列表中，并放在通用 <code>MATCH</code>、私有地址直连等规则之前：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="bullet">-</span> <span class="string">DOMAIN,nas.example.com,Home</span></span><br><span class="line"><span class="bullet">-</span> <span class="string">IP-CIDR,192.168.123.0/24,Home,no-resolve</span></span><br><span class="line"><span class="bullet">-</span> <span class="string">IP-CIDR,192.168.0.0/16,DIRECT,no-resolve</span></span><br></pre></td></tr></table></figure>
+
+<p>这样实现：</p>
+<ul>
+<li><code>nas.example.com</code> → Tailscale；</li>
+<li><code>192.168.123.x</code> → Tailscale；</li>
+<li>其他 <code>192.168.x.x</code> → 本地直连。</li>
+</ul>
+<p><code>no-resolve</code> 的意思是：为匹配这条 IP-CIDR 规则，不主动触发额外的 DNS 解析；它<strong>不是</strong>「禁止 DNS」开关。</p>
+<p>注意系统代理和 TUN 有不同的接管范围。Mac 系统代理模式下，如果系统已经把 <code>192.168.0.0/16</code> 列入代理绕过列表，流量可能在进入 Mihomo 之前就被绕过，因此单靠分流规则无法挽回。</p>
+<h2 id="五、排障：IP-能访问，域名却打不开"><a href="#五、排障：IP-能访问，域名却打不开" class="headerlink" title="五、排障：IP 能访问，域名却打不开"></a>五、排障：IP 能访问，域名却打不开</h2><p>实际配置时，我遇到了一种很奇怪的现象：</p>
+<ul>
+<li>FlClash 内置 Tailscale 访问 <code>192.168.123.163</code> 正常；</li>
+<li>独立 Tailscale 客户端访问域名正常；</li>
+<li>FlClash 的 SSH 出站访问同一个域名正常；</li>
+<li>但 FlClash 内置 <code>type: tailscale</code> 访问该域名时，会出现超时、TLS 握手中断或 <code>SERVFAIL</code>。</li>
+</ul>
+<h3 id="1-查看-FlClash-连接记录"><a href="#1-查看-FlClash-连接记录" class="headerlink" title="1. 查看 FlClash 连接记录"></a>1. 查看 FlClash 连接记录</h3><p>连接页面显示目标类似：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">tcp://nas.example.com/192.168.123.163:443</span><br><span class="line">Home → TS-HOME</span><br><span class="line">上传 0B / 下载 0B</span><br></pre></td></tr></table></figure>
+
+<p>说明域名规则<strong>命中了预期的出站</strong>，但不代表底层连接已经成功。</p>
+<h3 id="2-对比正常解析与强制指定-IP"><a href="#2-对比正常解析与强制指定-IP" class="headerlink" title="2. 对比正常解析与强制指定 IP"></a>2. 对比正常解析与强制指定 IP</h3><p>在手机 Termux 中运行：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">curl -4 -Iv https://nas.example.com/</span><br></pre></td></tr></table></figure>
+
+<p>当时可以看到 Mihomo 分配的 Fake-IP，例如：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">IPv4: 198.18.0.7</span><br><span class="line">Trying 198.18.0.7:443...</span><br><span class="line">TLS connect error: unexpected eof while reading</span><br></pre></td></tr></table></figure>
+
+<p><code>198.18.0.7</code> 是 Mihomo 的 Fake-IP 虚拟地址，<strong>出现这个地址本身不等于故障</strong>。</p>
+<p>再强制指定真实局域网 IP，同时保留 HTTPS 域名：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">curl -Iv \</span><br><span class="line">  --resolve nas.example.com:443:192.168.123.163 \</span><br><span class="line">  https://nas.example.com/</span><br></pre></td></tr></table></figure>
+
+<p>这次连接正常，出现了：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">SSL certificate verify ok.</span><br><span class="line">HTTP/2 200</span><br></pre></td></tr></table></figure>
+
+<p>这说明该次测试中，设备能够到达目标 IP，TLS 证书匹配，反向代理也正常。需要继续排查的是普通域名请求的 DNS 或出站拨号路径。</p>
+<h3 id="3-SERVFAIL-的线索"><a href="#3-SERVFAIL-的线索" class="headerlink" title="3. SERVFAIL 的线索"></a>3. <code>SERVFAIL</code> 的线索</h3><p>FlClash 曾出现：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">all DNS requests failed, first error: server failure: SERVFAIL</span><br></pre></td></tr></table></figure>
+
+<p>Mihomo 有一个与此现象类似的报告：<a target="_blank" rel="noopener" href="https://github.com/MetaCubeX/mihomo/issues/3375">Issue #3375：Tailscale 出站重新解析域名</a>。在部分实现/版本中，Tailscale 出站可能再次解析域名；如果其解析器没有可用上游，就可能连接失败。</p>
+<p><strong>注意：</strong> 这个 Issue 提供了很有价值的解释线索，但不能仅靠一次 <code>SERVFAIL</code> 日志就认定所有失败均由同一个 Bug 引起。</p>
+<h2 id="六、最终有效的修复：Mihomo-内核-Hosts"><a href="#六、最终有效的修复：Mihomo-内核-Hosts" class="headerlink" title="六、最终有效的修复：Mihomo 内核 Hosts"></a>六、最终有效的修复：Mihomo 内核 Hosts</h2><p>对我的环境来说，最简单、最稳定的办法，是在 FlClash 的 <strong>Mihomo 内核 Hosts</strong> 中直接写入域名和 NAS 私有 IP 的映射：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">hosts:</span></span><br><span class="line">  <span class="attr">nas.example.com:</span> <span class="number">192.168</span><span class="number">.123</span><span class="number">.163</span></span><br></pre></td></tr></table></figure>
+
+<p>有多个家庭域名时也可以继续添加：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">hosts:</span></span><br><span class="line">  <span class="attr">nas.example.com:</span> <span class="number">192.168</span><span class="number">.123</span><span class="number">.163</span></span><br><span class="line">  <span class="attr">git.example.com:</span> <span class="number">192.168</span><span class="number">.123</span><span class="number">.163</span></span><br><span class="line">  <span class="attr">media.example.com:</span> <span class="number">192.168</span><span class="number">.123</span><span class="number">.163</span></span><br></pre></td></tr></table></figure>
+
+<p>如果已有顶层 <code>dns:</code> 配置，请确保没有禁用 Hosts：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">dns:</span></span><br><span class="line">  <span class="attr">use-hosts:</span> <span class="literal">true</span></span><br></pre></td></tr></table></figure>
+
+<p>这是<strong>配置片段</strong>：如果原文件已有 <code>dns:</code>、<code>hosts:</code>，应当合并相应字段，不能复制出重复的顶层 YAML 键。</p>
+<h3 id="为什么内核-Hosts-能修复？"><a href="#为什么内核-Hosts-能修复？" class="headerlink" title="为什么内核 Hosts 能修复？"></a>为什么内核 Hosts 能修复？</h3><p>排障时曾经出现的失败链路：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">访问 nas.example.com</span><br><span class="line">    ↓</span><br><span class="line">规则命中 Home / TS-HOME</span><br><span class="line">    ↓</span><br><span class="line">Tailscale 出站可能再次解析域名</span><br><span class="line">    ↓</span><br><span class="line">DNS 返回 SERVFAIL</span><br><span class="line">    ↓</span><br><span class="line">连接失败</span><br></pre></td></tr></table></figure>
+
+<p>设置 Hosts 后，在相关解析路径中可以直接获得：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">nas.example.com → 192.168.123.163</span><br></pre></td></tr></table></figure>
+
+<p>从而避免这条查询再依赖失败的 DNS 上游。与此同时，浏览器访问的依然是 <code>https://nas.example.com</code>，所以 SNI、证书匹配和反向代理的 Host 路由不受影响。</p>
+<p><strong>这次实测验证有效的改动，是 Mihomo 内核 Hosts，而不是简单增加 DOMAIN 规则，也不是关闭全局 Fake-IP。</strong></p>
+<h3 id="备选方案：Tailscale-Split-DNS"><a href="#备选方案：Tailscale-Split-DNS" class="headerlink" title="备选方案：Tailscale Split DNS"></a>备选方案：Tailscale Split DNS</h3><p>Tailscale 管理后台也支持配置域名专用 DNS：</p>
+<p><a target="_blank" rel="noopener" href="https://login.tailscale.com/admin/dns">https://login.tailscale.com/admin/dns</a></p>
+<p>可以在 Nameservers 中添加 Custom DNS，并限定到 <code>example.com</code>，前提是该 DNS 服务器确实能够解析出正确的家庭私有 IP。</p>
+<p>不过，Tailscale 的 DNS 设置属于 Tailnet 级别，可能影响其他启用了「Use Tailscale DNS settings」的客户端；在同时运行独立 Tailscale 和其他 TUN 代理时还可能遇到 DNS/路由冲突。</p>
+<p>因此，对于仅访问少量家庭域名的场景，我更推荐在 FlClash 的内核 Hosts 中管理映射。</p>
+<h2 id="七、Mac-和-Android-的使用区别"><a href="#七、Mac-和-Android-的使用区别" class="headerlink" title="七、Mac 和 Android 的使用区别"></a>七、Mac 和 Android 的使用区别</h2><h3 id="Android：主要使用-FlClash-内置-Tailscale"><a href="#Android：主要使用-FlClash-内置-Tailscale" class="headerlink" title="Android：主要使用 FlClash 内置 Tailscale"></a>Android：主要使用 FlClash 内置 Tailscale</h3><p>Android 端的 FlClash 通常通过系统 VPN 接口接管流量。配置 <code>TS-HOME</code> 后，直接让相应规则选择 Home 即可，无须再同时运行另一套独立 Tailscale VPN。</p>
+<h3 id="Mac：两种方式任选其一"><a href="#Mac：两种方式任选其一" class="headerlink" title="Mac：两种方式任选其一"></a>Mac：两种方式任选其一</h3><p><strong>方案 A：FlClash TUN 开启，独立 Tailscale 关闭。</strong></p>
+<p>这是本文实际采用的整合方式：</p>
+<ul>
+<li>FlClash 接管目标应用的网络流量；</li>
+<li>访问家庭内网的请求走 <code>TS-HOME</code>；</li>
+<li>普通互联网继续按原有规则分流。</li>
+</ul>
+<p><strong>方案 B：独立 Tailscale 开启，FlClash TUN 关闭，使用系统代理。</strong></p>
+<p>此时独立 Tailscale 负责系统路由。对已经可以通过 macOS 路由到达的家庭 IP，FlClash 规则可以视情况选择 <code>DIRECT</code>，由系统送入独立 Tailscale。但这种方式可能受到 macOS 的代理绕过列表影响。</p>
+<p>不建议在没有规划的情况下，让两套 TUN/VPN 同时修改重叠网段的路由和 DNS。</p>
+<h2 id="八、常见问题速查"><a href="#八、常见问题速查" class="headerlink" title="八、常见问题速查"></a>八、常见问题速查</h2><table>
+<thead>
+<tr>
+<th>现象</th>
+<th>排查方向</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Tailscale 节点无法登录</td>
+<td>Auth Key、节点状态、Tailnet 设备列表</td>
+</tr>
+<tr>
+<td><code>Duplicate node key</code></td>
+<td>是否跨设备复制了已注册的状态目录</td>
+</tr>
+<tr>
+<td>家庭内网 IP 不通</td>
+<td><code>accept-routes</code>、子网路由批准、ACL、防火墙</td>
+</tr>
+<tr>
+<td>IP 通但域名不通</td>
+<td>内核 Hosts、DNS、出站拨号错误日志</td>
+</tr>
+<tr>
+<td>DNS 返回 <code>198.18.x.x</code></td>
+<td>可能是正常 Fake-IP，结合实际连接判断</td>
+</tr>
+<tr>
+<td>出现 <code>SERVFAIL</code></td>
+<td>区分 Mihomo DNS 和 Tailscale 内部解析器</td>
+</tr>
+<tr>
+<td>HTTPS 报证书错误或返回错误站点</td>
+<td>检查 SNI、Host、反向代理和证书</td>
+</tr>
+<tr>
+<td>Mac 访问内网不正常</td>
+<td>TUN、系统代理绕过列表和策略组选择</td>
+</tr>
+<tr>
+<td>换设备后无法连接</td>
+<td>重新注册节点，避免共用状态目录</td>
+</tr>
+</tbody></table>
+<p>额外建议：为群晖在路由器上设置 DHCP 地址保留，避免 IP 变化导致内核 Hosts 失效；为 Tailnet 设置适当的访问权限；不要在公开仓库提交真实 Auth Key、节点认证信息或完整代理配置。</p>
+<h2 id="九、总结"><a href="#九、总结" class="headerlink" title="九、总结"></a>九、总结</h2><p>最初以为，只要能从外网访问家庭内网 IP，就能自然地通过域名访问群晖。实际部署后才发现，<strong>组网、分流、DNS 和 HTTPS 反向代理是不同层次的问题</strong>。</p>
+<p>这套方案最终只需要四个关键步骤：</p>
+<ol>
+<li>群晖通过 Tailscale 发布 <code>192.168.123.0/24</code> 子网路由；</li>
+<li>FlClash 添加 <code>type: tailscale</code> 节点并开启 <code>accept-routes</code>；</li>
+<li>使用 <code>DOMAIN</code> 和 <code>IP-CIDR</code> 将家庭内网流量指向 Home；</li>
+<li>用 Mihomo 内核 Hosts 让 NAS 域名稳定解析到私有 IP。</li>
+</ol>
+<p>最终，无论在 Android 还是 Mac 上，都可以通过统一的 HTTPS 域名访问家里的 NAS，而不必在路由器上对公网开放 NAS 的业务端口，也不必为了访问家庭网络频繁切换独立 VPN。</p>
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ul>
+<li><a target="_blank" rel="noopener" href="https://tailscale.com/docs/integrations/synology">Tailscale：Synology 集成指南</a></li>
+<li><a target="_blank" rel="noopener" href="https://tailscale.com/docs/features/subnet-routers/how-to/setup">Tailscale：子网路由配置</a></li>
+<li><a target="_blank" rel="noopener" href="https://tailscale.com/docs/features/dns">Tailscale：DNS 设置</a></li>
+<li><a target="_blank" rel="noopener" href="https://wiki.metacubex.one/config/proxies/tailscale/">Mihomo：Tailscale 出站</a></li>
+<li><a target="_blank" rel="noopener" href="https://wiki.metacubex.one/config/dns/hosts/">Mihomo：Hosts</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/MetaCubeX/mihomo/issues/3375">Mihomo Issue #3375</a></li>
+</ul>
+<p><em>本文根据 2026 年 10 月底的实际部署及故障排查整理。不同 FlClash/Mihomo 版本的行为可能存在差异，具体以正在使用的内核及官方文档为准。</em></p>
+
+    </div>
+
+    
+    
+    
+        <div class="reward-container">
+  <div></div>
+  <button onclick="var qr = document.getElementById('qr'); qr.style.display = (qr.style.display === 'none') ? 'block' : 'none';">
+    打赏
+  </button>
+  <div id="qr" style="display: none;">
+      
+      <div style="display: inline-block;">
+        <img src="/images/%E8%B5%9E%E8%B5%8Fwechat.jpg" alt="WoodenRobot 微信支付">
+        <p>微信支付</p>
+      </div>
+      
+      <div style="display: inline-block;">
+        <img src="/images/%E6%89%93%E8%B5%8FIMG_20161001_162637.jpg" alt="WoodenRobot 支付宝">
+        <p>支付宝</p>
+      </div>
+
+  </div>
+</div>
+
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>WoodenRobot
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://woodenrobot.me/2026/11/01/tailscale-flclash-synology-nas/" title="不用公网 IP，也能通过域名访问群晖 NAS：Tailscale + FlClash 实战教程">https://woodenrobot.me/2026/11/01/tailscale-flclash-synology-nas/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+        
+
+  <div class="followme">
+    <p>欢迎关注我的其它发布渠道</p>
+
+    <div class="social-list">
+
+        <div class="social-item">
+          <a target="_blank" class="social-link" href="/uploads/weixin_code.png">
+            <span class="icon">
+              <i class="fab fa-weixin"></i>
+            </span>
+
+            <span class="label">WeChat</span>
+          </a>
+        </div>
+
+        <div class="social-item">
+          <a target="_blank" class="social-link" href="/atom.xml">
+            <span class="icon">
+              <i class="fa fa-rss"></i>
+            </span>
+
+            <span class="label">RSS</span>
+          </a>
+        </div>
+    </div>
+  </div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%86%85%E7%BD%91%E7%A9%BF%E9%80%8F/" rel="tag"># 内网穿透</a>
+              <a href="/tags/%E7%BE%A4%E6%99%96/" rel="tag"># 群晖</a>
+              <a href="/tags/Tailscale/" rel="tag"># Tailscale</a>
+              <a href="/tags/FlClash/" rel="tag"># FlClash</a>
+              <a href="/tags/Mihomo/" rel="tag"># Mihomo</a>
+              <a href="/tags/NAS/" rel="tag"># NAS</a>
+              <a href="/tags/DNS/" rel="tag"># DNS</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/11/01/clash-sshuttle-home-network/" rel="prev" title="一台 VPS，既能科学上网，也能访问家里的 NAS">
+      <i class="fa fa-chevron-left"></i> 一台 VPS，既能科学上网，也能访问家里的 NAS
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+      <div class="tabs tabs-comment">
+        <ul class="nav-tabs">
+            <li class="tab"><a href="#comment-disqus">Disqus</a></li>
+            <li class="tab"><a href="#comment-gitalk">Gitalk</a></li>
+        </ul>
+        <div class="tab-content">
+            <div class="tab-pane disqus" id="comment-disqus">
+              
+  <div class="comments">
+    <div id="disqus_thread">
+      <noscript>Please enable JavaScript to view the comments powered by Disqus.</noscript>
+    </div>
+  </div>
+  
+            </div>
+            <div class="tab-pane gitalk" id="comment-gitalk">
+              <div class="comments" id="gitalk-container"></div>
+            </div>
+        </div>
+      </div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80%E3%80%81%E6%96%B9%E6%A1%88%E4%B8%8E%E7%BD%91%E7%BB%9C%E6%8B%93%E6%89%91"><span class="nav-number">1.</span> <span class="nav-text">一、方案与网络拓扑</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%8C%E3%80%81%E7%BE%A4%E6%99%96%E9%85%8D%E7%BD%AE-Tailscale-%E5%AD%90%E7%BD%91%E8%B7%AF%E7%94%B1"><span class="nav-number">2.</span> <span class="nav-text">二、群晖配置 Tailscale 子网路由</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-%E5%AE%89%E8%A3%85-Tailscale"><span class="nav-number">2.1.</span> <span class="nav-text">1. 安装 Tailscale</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-%E5%90%AF%E7%94%A8-SSH-%E5%B9%B6%E5%8F%91%E5%B8%83%E5%AD%90%E7%BD%91"><span class="nav-number">2.2.</span> <span class="nav-text">2. 启用 SSH 并发布子网</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-%E5%9C%A8%E5%90%8E%E5%8F%B0%E6%89%B9%E5%87%86%E8%B7%AF%E7%94%B1"><span class="nav-number">2.3.</span> <span class="nav-text">3. 在后台批准路由</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%89%E3%80%81%E9%85%8D%E7%BD%AE%E7%BE%A4%E6%99%96-HTTPS-%E5%8F%8D%E5%90%91%E4%BB%A3%E7%90%86"><span class="nav-number">3.</span> <span class="nav-text">三、配置群晖 HTTPS 反向代理</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9B%9B%E3%80%81FlClash-%E9%85%8D%E7%BD%AE%E5%86%85%E7%BD%AE-Tailscale-%E5%87%BA%E7%AB%99"><span class="nav-number">4.</span> <span class="nav-text">四、FlClash 配置内置 Tailscale 出站</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-%E7%94%9F%E6%88%90-Auth-Key"><span class="nav-number">4.1.</span> <span class="nav-text">1. 生成 Auth Key</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-%E6%B7%BB%E5%8A%A0-type-tailscale-%E8%8A%82%E7%82%B9"><span class="nav-number">4.2.</span> <span class="nav-text">2. 添加 type: tailscale 节点</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-%E6%B7%BB%E5%8A%A0-Home-%E7%AD%96%E7%95%A5%E7%BB%84"><span class="nav-number">4.3.</span> <span class="nav-text">3. 添加 Home 策略组</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-%E6%B7%BB%E5%8A%A0%E5%AE%B6%E5%BA%AD%E5%9F%9F%E5%90%8D%E4%B8%8E%E7%BD%91%E6%AE%B5%E8%A7%84%E5%88%99"><span class="nav-number">4.4.</span> <span class="nav-text">4. 添加家庭域名与网段规则</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%94%E3%80%81%E6%8E%92%E9%9A%9C%EF%BC%9AIP-%E8%83%BD%E8%AE%BF%E9%97%AE%EF%BC%8C%E5%9F%9F%E5%90%8D%E5%8D%B4%E6%89%93%E4%B8%8D%E5%BC%80"><span class="nav-number">5.</span> <span class="nav-text">五、排障：IP 能访问，域名却打不开</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-%E6%9F%A5%E7%9C%8B-FlClash-%E8%BF%9E%E6%8E%A5%E8%AE%B0%E5%BD%95"><span class="nav-number">5.1.</span> <span class="nav-text">1. 查看 FlClash 连接记录</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-%E5%AF%B9%E6%AF%94%E6%AD%A3%E5%B8%B8%E8%A7%A3%E6%9E%90%E4%B8%8E%E5%BC%BA%E5%88%B6%E6%8C%87%E5%AE%9A-IP"><span class="nav-number">5.2.</span> <span class="nav-text">2. 对比正常解析与强制指定 IP</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-SERVFAIL-%E7%9A%84%E7%BA%BF%E7%B4%A2"><span class="nav-number">5.3.</span> <span class="nav-text">3. SERVFAIL 的线索</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%AD%E3%80%81%E6%9C%80%E7%BB%88%E6%9C%89%E6%95%88%E7%9A%84%E4%BF%AE%E5%A4%8D%EF%BC%9AMihomo-%E5%86%85%E6%A0%B8-Hosts"><span class="nav-number">6.</span> <span class="nav-text">六、最终有效的修复：Mihomo 内核 Hosts</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E5%86%85%E6%A0%B8-Hosts-%E8%83%BD%E4%BF%AE%E5%A4%8D%EF%BC%9F"><span class="nav-number">6.1.</span> <span class="nav-text">为什么内核 Hosts 能修复？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%87%E9%80%89%E6%96%B9%E6%A1%88%EF%BC%9ATailscale-Split-DNS"><span class="nav-number">6.2.</span> <span class="nav-text">备选方案：Tailscale Split DNS</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%83%E3%80%81Mac-%E5%92%8C-Android-%E7%9A%84%E4%BD%BF%E7%94%A8%E5%8C%BA%E5%88%AB"><span class="nav-number">7.</span> <span class="nav-text">七、Mac 和 Android 的使用区别</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Android%EF%BC%9A%E4%B8%BB%E8%A6%81%E4%BD%BF%E7%94%A8-FlClash-%E5%86%85%E7%BD%AE-Tailscale"><span class="nav-number">7.1.</span> <span class="nav-text">Android：主要使用 FlClash 内置 Tailscale</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Mac%EF%BC%9A%E4%B8%A4%E7%A7%8D%E6%96%B9%E5%BC%8F%E4%BB%BB%E9%80%89%E5%85%B6%E4%B8%80"><span class="nav-number">7.2.</span> <span class="nav-text">Mac：两种方式任选其一</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%AB%E3%80%81%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E9%80%9F%E6%9F%A5"><span class="nav-number">8.</span> <span class="nav-text">八、常见问题速查</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B9%9D%E3%80%81%E6%80%BB%E7%BB%93"><span class="nav-number">9.</span> <span class="nav-text">九、总结</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-number">10.</span> <span class="nav-text">参考资料</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="WoodenRobot"
+      src="/uploads/8bit.png">
+  <p class="site-author-name" itemprop="name">WoodenRobot</p>
+  <div class="site-description" itemprop="description">Life is short, should be fun!</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">68</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">44</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/Wooden-Robot" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;Wooden-Robot" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i></a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.zhihu.com/people/woodenrobot" title="知乎 → https:&#x2F;&#x2F;www.zhihu.com&#x2F;people&#x2F;woodenrobot" rel="noopener" target="_blank"><i class="fab fa-zhihu fa-fw"></i></a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://twitter.com/WoodenRobot_" title="Twitter → https:&#x2F;&#x2F;twitter.com&#x2F;WoodenRobot_" rel="noopener" target="_blank"><i class="fab fa-twitter fa-fw"></i></a>
+      </span>
+  </div>
+  <div class="cc-license motion-element" itemprop="license">
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" class="cc-opacity" rel="noopener" target="_blank"><img src="/images/cc-by-nc-sa.svg" alt="Creative Commons"></a>
+  </div>
+
+
+  <div class="links-of-blogroll motion-element">
+    <div class="links-of-blogroll-title"><i class="fa fa-link fa-fw"></i>
+      友情链接
+    </div>
+    <ul class="links-of-blogroll-list">
+        <li class="links-of-blogroll-item">
+          <a href="https://laike9m.com/" title="https:&#x2F;&#x2F;laike9m.com&#x2F;" rel="noopener" target="_blank">laike9m</a>
+        </li>
+        <li class="links-of-blogroll-item">
+          <a href="https://www.kawabangga.com/" title="https:&#x2F;&#x2F;www.kawabangga.com&#x2F;" rel="noopener" target="_blank">卡瓦邦噶！</a>
+        </li>
+        <li class="links-of-blogroll-item">
+          <a href="https://xiaozhou.net/" title="https:&#x2F;&#x2F;xiaozhou.net&#x2F;" rel="noopener" target="_blank">Timothy</a>
+        </li>
+        <li class="links-of-blogroll-item">
+          <a href="http://blog.flytrap.top/" title="http:&#x2F;&#x2F;blog.flytrap.top&#x2F;" rel="noopener" target="_blank">俗子</a>
+        </li>
+        <li class="links-of-blogroll-item">
+          <a href="https://liriansu.com/" title="https:&#x2F;&#x2F;liriansu.com&#x2F;" rel="noopener" target="_blank">浮云计算</a>
+        </li>
+        <li class="links-of-blogroll-item">
+          <a href="https://ackerr.me/" title="https:&#x2F;&#x2F;ackerr.me&#x2F;" rel="noopener" target="_blank">ZmJ</a>
+        </li>
+    </ul>
+  </div>
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 2016 – 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">WoodenRobot</span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item-icon">
+      <i class="fa fa-chart-area"></i>
+    </span>
+    <span title="站点总字数">165k</span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item-icon">
+      <i class="fa fa-coffee"></i>
+    </span>
+    <span title="站点阅读时长">2:30</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+
+  <meta name="referrer" content="no-referrer-when-downgrade">
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+  <div style="display: none;">
+    <script src="//s95.cnzz.com/z_stat.php?id=1262047333&web_id=1262047333"></script>
+  </div>
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+<script>
+  function loadCount() {
+    var d = document, s = d.createElement('script');
+    s.src = 'https://woodenrobot.disqus.com/count.js';
+    s.id = 'dsq-count-scr';
+    (d.head || d.body).appendChild(s);
+  }
+  // defer loading until the whole page loading is completed
+  window.addEventListener('load', loadCount, false);
+</script>
+<script>
+  var disqus_config = function() {
+    this.page.url = "https://woodenrobot.me/2026/11/01/tailscale-flclash-synology-nas/";
+    this.page.identifier = "2026/11/01/tailscale-flclash-synology-nas/";
+    this.page.title = "不用公网 IP，也能通过域名访问群晖 NAS：Tailscale + FlClash 实战教程";
+    };
+  NexT.utils.loadComments(document.querySelector('#disqus_thread'), () => {
+    if (window.DISQUS) {
+      DISQUS.reset({
+        reload: true,
+        config: disqus_config
+      });
+    } else {
+      var d = document, s = d.createElement('script');
+      s.src = 'https://woodenrobot.disqus.com/embed.js';
+      s.setAttribute('data-timestamp', '' + +new Date());
+      (d.head || d.body).appendChild(s);
+    }
+  });
+</script>
+
+<link rel="stylesheet" href="//cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.css">
+
+<script>
+NexT.utils.loadComments(document.querySelector('#gitalk-container'), () => {
+  NexT.utils.getScript('//cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js', () => {
+    var gitalk = new Gitalk({
+      clientID    : '832506ead7b9447f7500',
+      clientSecret: '3ef8bce62c4a14643c68cc118918ce7715ea1208',
+      repo        : 'gitalk',
+      owner       : 'woodenrobot-gitalk',
+      admin       : ['Wooden-Robot'],
+      id          : '17f4500828f4d4fb44102af274091f84',
+        language: '',
+      distractionFreeMode: true
+    });
+    gitalk.render('gitalk-container');
+  }, window.Gitalk);
+});
+</script>
+
+</body>
+</html>
